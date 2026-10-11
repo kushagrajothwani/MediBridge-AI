@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import Base, engine, get_db
+from app.routers import auth
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="MediBridge AI API", version="0.1.0")
+app = FastAPI(title="MediBridge AI API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +18,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth.router)
 
 
 @app.get("/health")
