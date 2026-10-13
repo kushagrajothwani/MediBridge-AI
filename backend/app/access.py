@@ -64,8 +64,26 @@ def decide_access(user: models.User, patient: models.Patient, record: models.Med
 
 
 def write_audit(db, actor, patient, action, resource, consent_label, reason=None):
-    """Adds an audit row. The caller commits."""
+    """Adds an audit row. The caller commits.
+    Identical view/denied events within 30 seconds are skipped to avoid log flooding."""
     import secrets
+    from datetime import timedelta
+
+    if action in ("view_records", "access_denied"):
+        cutoff = utcnow() - timedelta(seconds=30)
+        repeat = (
+            db.query(models.AuditEvent)
+            .filter(
+                models.AuditEvent.actor_id == actor.id,
+                models.AuditEvent.patient_id == patient.id,
+                models.AuditEvent.action == action,
+                models.AuditEvent.resource == resource,
+                models.AuditEvent.at >= cutoff,
+            )
+            .first()
+        )
+        if repeat:
+            return
 
     db.add(
         models.AuditEvent(

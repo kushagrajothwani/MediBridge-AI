@@ -239,3 +239,44 @@ def test_emergency_requires_a_real_reason():
     _, mb = new_patient()
     res = client.post("/consents/emergency", headers=doctor, json={"patientId": mb, "reason": "urgent"})
     assert res.status_code == 422
+
+def test_grant_can_narrow_scope_but_not_widen():
+    doctor = login(*DOCTOR_B)
+    patient, mb = new_patient()
+    consent_id = request_consent(doctor, mb, scope=("lab_report", "prescription"))
+    wider = client.post(f"/consents/{consent_id}/grant", headers=patient,
+                        json={"durationDays": 7, "scope": ["lab_report", "allergy"]})
+    assert wider.status_code == 422
+    narrower = client.post(f"/consents/{consent_id}/grant", headers=patient,
+                           json={"durationDays": 7, "scope": ["lab_report"]})
+    assert narrower.status_code == 200
+    assert narrower.json()["scope"] == ["lab_report"]
+
+
+def test_doctor_audit_shows_only_own_actions():
+    doctor = login(*DOCTOR_B)
+    doctor_id = client.get("/auth/me", headers=doctor).json()["id"]
+    _, mb = new_patient()
+    request_consent(doctor, mb)
+    events = client.get("/audit", headers=doctor).json()
+    assert events
+    assert all(e["actorId"] == doctor_id for e in events)
+
+
+def test_ai_audit_is_doctor_only():
+    doctor = login(*DOCTOR_B)
+    patient, mb = new_patient()
+    body = {"patientId": mb, "query": "Summarize history"}
+    assert client.post("/audit/ai", headers=patient, json=body).status_code == 403
+    assert client.post("/audit/ai", headers=doctor, json=body).status_code == 204
+
+
+def test_repeated_reads_do_not_flood_the_audit_log():
+    doctor = login(*DOCTOR_B)
+    patient, mb = new_patient()
+    record_id = add_record(mb)
+    grant(patient, request_consent(doctor, mb))
+    for _ in range(3):
+        assert client.get(f"/records/{record_id}", headers=doctor).status_code == 200
+    audit = client.get("/audit", headers=patient).json()
+    assert len([e for e in audit if e["action"] == "view_records" and e["resource"] == record_id]) == 1

@@ -83,7 +83,7 @@ class ConsentRequestIn(CamelModel):
 
 class ConsentGrantIn(CamelModel):
     duration_days: int = Field(default=7, ge=1, le=30)
-
+    scope: Optional[list[str]] = None  # may only narrow the original request
 
 class ConsentOut(CamelModel):
     id: str
@@ -144,3 +144,7 @@ class RecordCreateIn(CamelModel):
 class EmergencyIn(CamelModel):
     patient_id: str
     reason: str = Field(min_length=10, max_length=300)
+
+class AiAuditIn(CamelModel):
+    patient_id: str
+    query: str = Field(min_length=1, max_length=300)

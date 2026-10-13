@@ -110,6 +110,11 @@ def grant(
     if consent.status != "pending":
         raise HTTPException(409, "Only pending requests can be granted")
     days = data.duration_days if data else 7
+    if data and data.scope is not None:
+        chosen = sorted(set(data.scope))
+        if not chosen or not set(chosen) <= set(consent.scope or []):
+            raise HTTPException(422, "Scope must be a non-empty part of what was requested")
+        consent.scope = chosen
     now = utcnow()
     consent.status = "active"
     consent.decided_at = now
