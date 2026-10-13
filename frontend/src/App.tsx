@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { useStore } from './store/AppStore';
+import { useReady, useStore } from './store/AppStore';
 import Shell from './components/Shell';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
@@ -15,6 +15,8 @@ import { ErrorState } from './components/ui';
 
 function RequireAuth() {
   const { user } = useStore();
+  const ready = useReady();
+  if (!ready) return <p role="status" className="p-8 text-muted">Loading your session...</p>;
   return user ? <Shell /> : <Navigate to="/login" replace />;
 }
 
