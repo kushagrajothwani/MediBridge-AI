@@ -103,7 +103,7 @@ def list_records(
         .all()
     )
 
-    visible, locked_counts = [], Counter()
+    visible, locked = [], []
     for record in records:
         allowed, label, needs_audit = decide_access(user, patient, record, consents)
         if allowed:
@@ -111,12 +111,14 @@ def list_records(
             if needs_audit:
                 write_audit(db, user, patient, "view_records", record.id, label)
         else:
-            locked_counts[record.hospital_id] += 1
+            locked.append(
+                schemas.LockedOut(
+                    hospital_id=record.hospital_id,
+                    type=record.type,
+                    date=record.record_date.isoformat(),
+                )
+            )
     db.commit()
-
-    locked = [
-        schemas.LockedOut(hospital_id=h, count=n) for h, n in sorted(locked_counts.items())
-    ]
     return schemas.RecordListOut(records=visible, locked=locked)
 
 

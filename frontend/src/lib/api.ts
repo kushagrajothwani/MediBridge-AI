@@ -93,7 +93,7 @@ export const searchPatient = (q: string) => request<Patient>(`/patients/search?q
 
 export interface RecordList {
   records: MedicalRecord[];
-  locked: { hospitalId: string; count: number }[];
+  locked: { hospitalId: string; type: RecordType; date: string }[];
 }
 export const getRecords = (patientId: string) =>
   request<RecordList>(`/patients/${encodeURIComponent(patientId)}/records`);
@@ -117,6 +117,8 @@ export const rejectConsent = (id: string) => request<ApiConsent>(`/consents/${id
 export const revokeConsent = (id: string) => request<ApiConsent>(`/consents/${id}/revoke`, { method: 'POST' });
 export const emergencyAccess = (patientId: string, reason: string) =>
   request<ApiConsent>('/consents/emergency', { json: { patientId, reason } });
+export const logDeniedAttempt = (patientId: string, hospitalId: string, type: RecordType) =>
+  request<void>('/audit/denied', { json: { patientId, hospitalId, type } });
 
 // ---------- Audit and demo ----------
 export const getAudit = () => request<AuditEvent[]>('/audit');

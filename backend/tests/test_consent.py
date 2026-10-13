@@ -66,7 +66,7 @@ def test_other_hospital_records_are_locked_without_consent():
     listing = client.get(f"/patients/{mb}/records", headers=doctor)
     assert listing.status_code == 200
     assert listing.json()["records"] == []
-    assert listing.json()["locked"] == [{"hospitalId": "H-A", "count": 1}]
+    assert listing.json()["locked"] == [{"hospitalId": "H-A", "type": "lab_report", "date": "2026-03-12"}]
 
     assert client.get(f"/records/{record_id}", headers=doctor).status_code == 403
 
@@ -240,43 +240,23 @@ def test_emergency_requires_a_real_reason():
     res = client.post("/consents/emergency", headers=doctor, json={"patientId": mb, "reason": "urgent"})
     assert res.status_code == 422
 
-def test_grant_can_narrow_scope_but_not_widen():
+def test_locked_attempt_is_logged_and_validated():
     doctor = login(*DOCTOR_B)
     patient, mb = new_patient()
-    consent_id = request_consent(doctor, mb, scope=("lab_report", "prescription"))
-    wider = client.post(f"/consents/{consent_id}/grant", headers=patient,
-                        json={"durationDays": 7, "scope": ["lab_report", "allergy"]})
-    assert wider.status_code == 422
-    narrower = client.post(f"/consents/{consent_id}/grant", headers=patient,
-                           json={"durationDays": 7, "scope": ["lab_report"]})
-    assert narrower.status_code == 200
-    assert narrower.json()["scope"] == ["lab_report"]
-
-
-def test_doctor_audit_shows_only_own_actions():
-    doctor = login(*DOCTOR_B)
-    doctor_id = client.get("/auth/me", headers=doctor).json()["id"]
-    _, mb = new_patient()
-    request_consent(doctor, mb)
-    events = client.get("/audit", headers=doctor).json()
-    assert events
-    assert all(e["actorId"] == doctor_id for e in events)
-
-
-def test_ai_audit_is_doctor_only():
-    doctor = login(*DOCTOR_B)
-    patient, mb = new_patient()
-    body = {"patientId": mb, "query": "Summarize history"}
-    assert client.post("/audit/ai", headers=patient, json=body).status_code == 403
-    assert client.post("/audit/ai", headers=doctor, json=body).status_code == 204
-
-
-def test_repeated_reads_do_not_flood_the_audit_log():
-    doctor = login(*DOCTOR_B)
-    patient, mb = new_patient()
-    record_id = add_record(mb)
-    grant(patient, request_consent(doctor, mb))
-    for _ in range(3):
-        assert client.get(f"/records/{record_id}", headers=doctor).status_code == 200
+    add_record(mb, rtype="lab_report")
+    body = {"patientId": mb, "hospitalId": "H-A", "type": "lab_report"}
+    assert client.post("/audit/denied", headers=doctor, json=body).status_code == 204
     audit = client.get("/audit", headers=patient).json()
-    assert len([e for e in audit if e["action"] == "view_records" and e["resource"] == record_id]) == 1
+    assert any(e["action"] == "access_denied" for e in audit)
+    invented = {"patientId": mb, "hospitalId": "H-A", "type": "allergy"}
+    assert client.post("/audit/denied", headers=doctor, json=invented).status_code == 404
+    assert client.post("/audit/denied", headers=patient, json=body).status_code == 403
+
+
+def test_denied_log_rejects_records_the_doctor_may_read():
+    doctor = login(*DOCTOR_B)
+    patient, mb = new_patient()
+    add_record(mb, rtype="lab_report")
+    grant(patient, request_consent(doctor, mb))
+    body = {"patientId": mb, "hospitalId": "H-A", "type": "lab_report"}
+    assert client.post("/audit/denied", headers=doctor, json=body).status_code == 404

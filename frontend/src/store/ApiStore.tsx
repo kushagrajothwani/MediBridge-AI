@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AuditEvent, Consent, MedicalRecord, RecordType, User } from '../types';
+import { RECORD_LABEL } from '../types';
 import { PATIENTS } from '../data/seed';
 import { LOCKED_PREFIX } from '../lib/access';
 import * as api from '../lib/api';
@@ -8,7 +9,7 @@ import * as api from '../lib/api';
  * Store backed by the real FastAPI backend. It exposes the same members as the
  * mock store, so the pages do not change.
  * - The backend decides what each user may read and writes the audit trail.
- * - "Locked" records arrive as counts only; they become content-free placeholders here.
+ * - "Locked" records arrive as type and date only; they become content-free placeholders here.
  */
 
 interface State {
@@ -37,22 +38,25 @@ interface Store extends State {
   logView: (viewer: User, patientId: string) => void;
   logDenied: (viewer: User, record: MedicalRecord) => void;
   logAi: (viewer: User, patientId: string, query: string) => void;
-  addRecord: (admin: User, record: Omit<MedicalRecord, 'id'>) => string;
+  addRecord: (admin: User, record: Omit<MedicalRecord, 'id'>) => Promise<string>;
 }
 
 function lockedPlaceholders(patientId: string, locked: api.RecordList['locked']): MedicalRecord[] {
-  return locked.flatMap((l) =>
-    Array.from({ length: l.count }, (_, i) => ({
-      id: `${LOCKED_PREFIX}${l.hospitalId}:${patientId}:${i}`,
-      patientId,
-      hospitalId: l.hospitalId,
-      type: 'encounter' as RecordType,
-      title: 'Locked until the patient gives permission',
-      date: '1970-01-01',
-      summary: '',
-      provenance: { extraction: 'Manual entry' as const, verification: 'unverified' as const, uploadedAt: '1970-01-01T00:00:00', fileName: '' },
-    })),
-  );
+  return locked.map((l, i) => ({
+    id: `${LOCKED_PREFIX}${l.hospitalId}:${patientId}:${i}`,
+    patientId,
+    hospitalId: l.hospitalId,
+    type: l.type,
+    title: `${RECORD_LABEL[l.type]} (locked)`,
+    date: l.date,
+    summary: '',
+    provenance: {
+      extraction: 'Manual entry' as const,
+      verification: 'unverified' as const,
+      uploadedAt: `${l.date}T00:00:00`,
+      fileName: '',
+    },
+  }));
 }
 
 async function fetchAll(user: User) {
@@ -223,13 +227,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         act(() => (grant ? api.grantConsent(id, opts?.days ?? 7, opts?.scope) : api.rejectConsent(id))),
       revokeConsent: (id) => act(() => api.revokeConsent(id)),
       emergencyAccess: (_doctor, patientId, reason) => act(() => api.emergencyAccess(patientId, reason)),
-      // The backend already records views and denials on every read, so these two do nothing here.
+      // The backend already records every read on its own, so viewing needs no extra call.
       logView: () => undefined,
-      logDenied: () => undefined,
+      // Clicking a locked entry is logged as a blocked attempt. Quiet on failure.
+      logDenied: (_viewer, record) =>
+        act(() => api.logDeniedAttempt(record.patientId, record.hospitalId, record.type)),
       logAi: (_viewer, patientId, query) => act(() => api.logAiUse(patientId, query)),
-      addRecord: (_admin, record) => {
-        act(() =>
-          api.uploadRecord({
+       addRecord: async (_admin, record) => {
+        try {
+          const saved = await api.uploadRecord({
             patientId: record.patientId,
             type: record.type,
             title: record.title,
@@ -241,12 +247,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             extraction: record.provenance.extraction,
             verification: record.provenance.verification,
             fileName: record.provenance.fileName,
-          }),
-        );
-        return 'Saving...'; // the real id is assigned by the backend
+          });
+          await reload();
+          return saved.id;
+         } catch (e) {
+          fail(e);
+          throw e;
+        }
       },
     }),
-    [state, act, logout, resetDemo],
+     [state, act, logout, resetDemo, reload, fail],
   );
 
   const auth = useMemo<AuthActions>(() => ({ signIn, signUp }), [signIn, signUp]);

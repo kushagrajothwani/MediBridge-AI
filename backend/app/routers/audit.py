@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
-from app.access import iso, write_audit
+from app.access import active_consents, decide_access, iso, write_audit
 from app.database import get_db
 from app.deps import require_roles
 
@@ -52,5 +52,33 @@ def log_ai_summary(
     if patient is None:
         raise HTTPException(404, "Patient not found")
     write_audit(db, user, patient, "ai_summary", "AI assistant", "Checked per record", data.query.strip())
+    db.commit()
+    return Response(status_code=204)
+
+@router.post("/audit/denied", status_code=204)
+def log_denied_attempt(
+    data: schemas.DeniedAttemptIn,
+    user: models.User = Depends(require_roles("doctor")),
+    db: Session = Depends(get_db),
+):
+    patient = (
+        db.query(models.Patient)
+        .filter(models.Patient.mb_patient_id == data.patient_id.strip().upper())
+        .first()
+    )
+    if patient is None:
+        raise HTTPException(404, "Patient not found")
+
+    consents = active_consents(db, user, patient)
+    candidates = (
+        db.query(models.MedicalRecord)
+        .filter_by(patient_id=patient.id, hospital_id=data.hospital_id, type=data.type)
+        .all()
+    )
+    blocked = [r for r in candidates if not decide_access(user, patient, r, consents)[0]]
+    if not blocked:
+        raise HTTPException(404, "No locked record matches")
+
+    write_audit(db, user, patient, "access_denied", f"{data.type} record at {data.hospital_id}", "No active consent")
     db.commit()
     return Response(status_code=204)

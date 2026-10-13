@@ -66,8 +66,10 @@ class RecordOut(CamelModel):
 
 
 class LockedOut(CamelModel):
+    """Metadata only: a record exists but is not readable. No id, title or content."""
     hospital_id: str
-    count: int
+    type: str
+    date: str
 
 
 class RecordListOut(CamelModel):
@@ -148,3 +150,8 @@ class EmergencyIn(CamelModel):
 class AiAuditIn(CamelModel):
     patient_id: str
     query: str = Field(min_length=1, max_length=300)
+
+class DeniedAttemptIn(CamelModel):
+    patient_id: str
+    hospital_id: str
+    type: str

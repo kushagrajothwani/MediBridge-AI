@@ -41,23 +41,29 @@ export default function HospitalDashboard() {
   }
   const onDrop = (e: DragEvent) => { e.preventDefault(); setDrag(false); accept(e.dataTransfer.files[0]); };
 
-  function extract() {
+   function extract() {
     setStage('reading');
-    // Stand-in for the OCR + document classification pipeline.
+    // Automatic reading (OCR) is not connected in this demo. The administrator
+    // types the record details from the document and checks them.
     setTimeout(() => {
       setTitle(type === 'lab_report' ? 'Blood report' : type === 'prescription' ? 'Prescription' : RECORD_LABEL[type]);
-      setSummary('Text read from the document appears here. Check it against the original file, fix any mistakes, then save.');
+      setSummary('');
       setStage('review');
-    }, 1400);
+    }, 400);
   }
 
-  function save() {
+  async function save() {
     if (!file || title.trim().length < 3) return setError('Give the record a title of at least 3 characters.');
-    const id = addRecord(user!, {
-      patientId, hospitalId: hospital.id, type, title: title.trim(), date, summary: summary.trim(),
-      provenance: { extraction: 'OCR + manual review', verification: 'reviewed', uploadedAt: new Date().toISOString(), fileName: file.name },
-    });
-    setSaved(id); setStage('choose'); setFile(null); setTitle(''); setSummary(''); setError('');
+    if (summary.trim().length < 3) return setError('Enter the record details from the document.');
+    try {
+      const id = await addRecord(user!, {
+        patientId, hospitalId: hospital.id, type, title: title.trim(), date, summary: summary.trim(),
+        provenance: { extraction: 'Manual entry', verification: 'reviewed', uploadedAt: new Date().toISOString(), fileName: file.name },
+      });
+      setSaved(id); setStage('choose'); setFile(null); setTitle(''); setSummary(''); setError('');
+    } catch {
+      setError('The record could not be saved. Check the message at the bottom of the screen and try again.');
+    }
   }
 
   return (
@@ -107,7 +113,7 @@ export default function HospitalDashboard() {
                     <CheckCircle2 className="size-4" aria-hidden /> Saved as {saved}. It is now part of the patient’s record.
                   </p>
                 )}
-                <Button disabled={!file} onClick={extract} className="w-full">Read the document</Button>
+                <Button disabled={!file} onClick={extract} className="w-full">Continue</Button>
               </>
             )}
 
@@ -117,10 +123,10 @@ export default function HospitalDashboard() {
 
             {stage === 'review' && (
               <>
-                <p className="rounded-md bg-warn-tint px-3 py-2 text-sm text-warn">Check this against the original before saving. Nothing is added to the record until you save.</p>
+                <p className="rounded-md bg-warn-tint px-3 py-2 text-sm text-warn">Check this against the original before saving. Automatic reading is not connected in this demo. Type the details from the document, check them against the original, then save.</p>
                 <Field label="Title" htmlFor="title"><input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} /></Field>
                 <Field label="Record date" htmlFor="date"><input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} /></Field>
-                <Field label="Extracted text" htmlFor="sum"><textarea id="sum" rows={4} value={summary} onChange={(e) => setSummary(e.target.value)} className={`${inputClass} h-auto py-2`} /></Field>
+                <Field label="Record details" htmlFor="sum"><textarea id="sum" rows={4} value={summary} onChange={(e) => setSummary(e.target.value)} className={`${inputClass} h-auto py-2`} /></Field>
                 {error && <p role="alert" className="text-sm text-bad">{error}</p>}
                 <div className="flex gap-2">
                   <Button onClick={save}>Save to patient record</Button>

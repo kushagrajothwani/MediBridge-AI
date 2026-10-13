@@ -75,7 +75,7 @@ interface Store extends State {
   logView: (viewer: User, patientId: string) => void;
   logDenied: (viewer: User, record: MedicalRecord) => void;
   logAi: (viewer: User, patientId: string, query: string) => void;
-  addRecord: (admin: User, record: Omit<MedicalRecord, 'id'>) => string;
+  addRecord: (admin: User, record: Omit<MedicalRecord, 'id'>) => string | Promise<string>;
 }
 
 const Ctx = createContext<Store | null>(null);
