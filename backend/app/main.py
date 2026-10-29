@@ -10,14 +10,23 @@ from app.routers import audit, auth, consents, demo, patients, records
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="MediBridge AI API", version="0.4.0")
+if settings.seed_on_startup:
+    from app.seed import seed
+
+    seed()  # idempotent; refuses to run when APP_ENV=production
+
+app = FastAPI(title="MediBridge AI API", version="0.5.0")
+
+origins = [o.strip().rstrip("/") for o in settings.frontend_url.split(",") if o.strip()]
+if settings.app_env == "development":
+    origins += [
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "http://localhost:4173", "http://127.0.0.1:4173",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:4173", "http://127.0.0.1:4173",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

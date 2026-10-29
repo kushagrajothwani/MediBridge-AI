@@ -106,6 +106,11 @@ export default function Login() {
             A patient arrives unconscious. Her last six months of records are at another hospital.
           </p>
           <p className="mt-5 max-w-md leading-relaxed text-white/70">
+                    {USE_API && (
+            <p role="note" className="mt-3 rounded-md bg-warn-tint px-3 py-2 text-sm text-warn">
+              Demo with synthetic data only. Do not enter real personal or health information.
+            </p>
+          )}
             MediBridge gives the doctor a way to get them, with the patient's consent on record.
           </p>
         </div>

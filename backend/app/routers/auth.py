@@ -1,3 +1,4 @@
+from app.config import settings
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -34,6 +35,8 @@ def to_user_response(user: models.User) -> schemas.UserResponse:
 @router.post("/register", response_model=schemas.UserResponse, status_code=201)
 def register(data: schemas.RegisterRequest, db: Session = Depends(get_db)):
     """Patient self-registration only. Doctor/admin accounts are created by an administrator."""
+    if not settings.allow_registration:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Registration is disabled in this demo. Use a demo account.")
     email = data.email.lower()
     if db.query(models.User).filter(models.User.email == email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
